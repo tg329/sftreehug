@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>San Francisco Trees Data Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/topojson.v3.min.js"></script>
+    <style>
+        body {
+            font-family: whitney, 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+            background-color: #f7f7f7;
+            color: #333;
+        }
+
+        h1 {
+            color: #2d6a4f;
+            font-size: 50px;
+            margin-top: 30px;
+        }
+
+        p {
+            font-size: 20px;
+            margin: 20px;
+        }
+
+        ul li {
+            padding: 5px 0;
+        }
+
+        svg {
+            display: block;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        #bar {
+            margin-top: 50px;
+        }
+
+        .flex {
+            display: flex;
+        }
+    </style>
+</head>
+
+<body>
+    <h1> Find Your Next Hug: Largest Common Trees in SF! </h1>
+    <p>
+        These maps show you where to find certain trees in San Francisco, based on their size and species.
+        It is focused on the <strong>top 10 most common tree species</strong>, so you can better find where these
+        trees are located, which species tend to grow the largest, and how their sizes vary across the city.
+    </p>
+
+    <p>
+        <strong>Dots</strong> are used to show where trees are located, and their relative <strong>size</strong> is
+        based on DBH (diameter at breast height). The
+        <strong>color</strong> of each dot represents the tree’s species, and the <strong>largest</strong> tree of each
+        species has a black outline.
+    </p>
+
+    <p>Top 10 tree species: </p>
+    <ul>
+        <li> Sycamore: London Plane: 2633 trees</li>
+        <li> New Zealand Xmas Tree: 1937 trees</li>
+        <li> Brisbane Box: 1727 trees</li>
+        <li> Victorian Box: 1669 trees</li>
+        <li> Swamp Myrtle: 1577 trees</li>
+        <li> Indian Laurel Fig Tree 'Green Gem': 1425 trees</li>
+        <li> Southern Magnolia: 1377 trees</li>
+        <li> Cherry Plum: 1306 trees</li>
+        <li> Hybrid Strawberry Tree: 1063 trees</li>
+        <li> Kwanzan Flowering Cherry: 841 trees</li>
+    </ul>
+
+    <div class="flex">
+        <svg id="mapTop5" height="800" width="800"></svg>
+        <svg id="mapNext5" height="800" width="800"></svg>
+    </div>
+
+    <h1> Caretakers & Tree Size </h1>
+
+    <p> This bar chart captures the average tree size (DBH) managed by caretakers in SF, showing by whom these
+        trees are being nurtured. Understanding who cares for these trees can help highlight if certain agencies foster
+        the growth of larger trees.
+    </p>
+
+    <p>Specifically, the Health Dept, Rec/Park, and Mayor Office of Housing hold the greatest average for tree size
+        among the top 10 species.
+        However, there may be discrepancies in that there is an uneven spread of trees per caretaker, and different tree
+        species may only grow up to certain diameter lengths.</p>
+
+    <svg id="bar" height="700" width="1000"></svg>
+
+    <script>
+        const top5 = [
+            "Platanus x hispanica :: Sycamore: London Plane",
+            "Metrosideros excelsa :: New Zealand Xmas Tree",
+            "Lophostemon confertus :: Brisbane Box",
+            "Pittosporum undulatum :: Victorian Box",
+            "Tristaniopsis laurina :: Swamp Myrtle"
+        ];
+
+        const next5 = [
+            "Arbutus 'Marina' :: Hybrid Strawberry Tree",
+            "Ficus microcarpa nitida 'Green Gem' :: Indian Laurel Fig Tree 'Green Gem'",
+            "Magnolia grandiflora :: Southern Magnolia",
+            "Prunus cerasifera :: Cherry Plum",
+            "Prunus serrulata 'Kwanzan' :: Kwanzan Flowering Cherry"
+        ];
+
+        const loadMap = async (speciesFilter, mapId) => {
+            const svg = d3.select(`#${mapId}`);
+            const width = svg.attr("width");
+            const height = svg.attr("height");
+            const margin = { top: 20, right: 40, bottom: 0, left: 40 };
+            const mapWidth = width - margin.left - margin.right;
+            const mapHeight = height - margin.top - margin.bottom;
+
+            const map = svg.append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+            const sf = await d3.json("SF-Neighborhoods.geo.json");
+            const neighborhoods = topojson.feature(sf, sf.objects.SFNeighborhoods).features;
+
+            const projection = d3.geoAlbersUsa().fitSize([mapWidth, mapHeight], topojson.feature(sf, sf.objects.SFNeighborhoods));
+            const path = d3.geoPath().projection(projection);
+
+            map.selectAll("path.neighborhood")
+                .data(neighborhoods)
+                .join("path")
+                .attr("d", path)
+                .attr("fill", "#f3f3f3")
+                .attr("stroke", "black")
+                .attr("stroke-width", 1);
+
+            const trees = await d3.csv("filtered_trees.csv", d3.autoType);
+            const filteredTrees = trees.filter(tree => speciesFilter.includes(tree.qSpecies));
+            // console.log(d3.extent(filteredTrees, d => d.DBH));
+            const sizeScale = d3.scaleLinear()
+                .domain(d3.extent(filteredTrees, d => d.DBH))
+                .range([2, 12]);
+
+            const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+
+            const avgDBH = {};
+            const speciesCount = {};
+            filteredTrees.forEach(tree => {
+                if (!avgDBH[tree.qSpecies]) {
+                    avgDBH[tree.qSpecies] = 0;
+                    speciesCount[tree.qSpecies] = 0;
+                }
+                avgDBH[tree.qSpecies] += tree.DBH;
+                speciesCount[tree.qSpecies] += 1;
+            });
+
+            // console.log(avgDBH);
+            for (const species in avgDBH) {
+                avgDBH[species] = avgDBH[species] / speciesCount[species];
+            }
+            // console.log(speciesCount)
+            // console.log(avgDBH);
+
+            const largestTrees = {};
+            filteredTrees.forEach(tree => {
+                if (!largestTrees[tree.qSpecies] || largestTrees[tree.qSpecies].DBH < tree.DBH) {
+                    largestTrees[tree.qSpecies] = tree;
+                }
+            });
+
+            map.selectAll("circle")
+                .data(filteredTrees)
+                .join("circle")
+                .attr("cx", d => projection([d.Longitude, d.Latitude])[0])
+                .attr("cy", d => projection([d.Longitude, d.Latitude])[1])
+                .attr("r", d => sizeScale(d.DBH))
+                .attr("fill", d => colorScale(d.qSpecies))
+                .attr("fill-opacity", 0.5);
+
+            map.selectAll("circle.stroke")
+                .data(filteredTrees)
+                .join("circle")
+                .attr("cx", d => projection([d.Longitude, d.Latitude])[0])
+                .attr("cy", d => projection([d.Longitude, d.Latitude])[1])
+                .attr("r", d => sizeScale(d.DBH))
+                .attr("stroke", "black")
+                .attr("stroke-width", d => (largestTrees[d.qSpecies] === d ? 3 : 0))
+                .attr("fill", "none");
+
+            const legend = svg.append("g")
+                .attr("transform", `translate(${width - 450}, ${margin.top})`);
+
+            // Source: https://stackoverflow.com/questions/3068534/getting-javascript-object-key-list
+            const legendItems = legend.selectAll("g")
+                .data(Object.keys(avgDBH))
+                .enter()
+                .append("g")
+                .attr("transform", (d, i) => `translate(0, ${i * 20})`);
+
+            legendItems.append("circle")
+                .attr("cx", -10)
+                .attr("cy", -5)
+                .attr("r", 5)
+                .attr("fill", d => colorScale(d));
+
+            // Source: https://stackoverflow.com/questions/18092954/javascript-replace-is-not-replacing-all-the-characters-match
+            legendItems.append("text")
+                .text(d => d.replace(/.*::\s*/, '') + ` (Avg DBH: ${avgDBH[d].toFixed(1)}, Max DBH: ${largestTrees[d].DBH})`);
+        };
+
+
+        loadMap(top5, 'mapTop5');
+        loadMap(next5, 'mapNext5');
+
+        const loadBar = async function () {
+            // Source: https://stackoverflow.com/questions/74076273/bar-chart-not-properly-displayed-with-d3-js
+            const bar = d3.select("#bar");
+            const barWidth = bar.attr("width");
+            const barHeight = bar.attr("height");
+            const barMargin = { top: 20, right: 20, bottom: 100, left: 100 };
+            const chartWidth = barWidth - barMargin.left - barMargin.right;
+            const chartHeight = barHeight - barMargin.top - barMargin.bottom;
+
+            const chartArea = bar.append("g")
+                .attr("transform", `translate(${barMargin.left},${barMargin.top})`);
+
+            const trees = await d3.csv("filtered_trees.csv", d3.autoType);
+            const filteredTrees = trees.filter(d => d.qCaretaker && d.DBH);
+
+            const avgDBH = {};
+            const caretakerCount = {};
+
+            filteredTrees.forEach(tree => {
+                let caretaker = tree.qCaretaker;
+                if (!avgDBH[caretaker]) {
+                    avgDBH[caretaker] = 0;
+                    caretakerCount[caretaker] = 0;
+                }
+                avgDBH[caretaker] += tree.DBH;
+                caretakerCount[caretaker] += 1;
+            });
+
+            for (const caretaker in avgDBH) {
+                avgDBH[caretaker] = avgDBH[caretaker] / caretakerCount[caretaker];
+            }
+
+            let avg = [];
+            for (let caretaker in avgDBH) {
+                avg.push({ caretaker: caretaker, avgDBH: avgDBH[caretaker] });
+            }
+            // console.log(avg);
+
+            const xScale = d3.scaleBand()
+                .domain(avg.map(d => d.caretaker))
+                .range([0, chartWidth])
+                .padding(0.2);
+
+            // console.log(d3.extent(avgDBHData, d => d.avgDBH))
+            const yScale = d3.scaleLinear()
+                .domain([0, 25.75])
+                .range([chartHeight, 0]);
+
+            chartArea.append("g")
+                .attr("transform", `translate(0,${chartHeight})`)
+                .call(d3.axisBottom(xScale))
+                .selectAll("text")
+                .attr("transform", "rotate(-45)")
+                .style("text-anchor", "end");
+
+            chartArea.append("g").call(d3.axisLeft(yScale));
+
+            chartArea.selectAll("rect")
+                .data(avg)
+                .join("rect")
+                .attr("x", d => xScale(d.caretaker))
+                .attr("y", d => yScale(d.avgDBH))
+                .attr("width", xScale.bandwidth())
+                .attr("height", d => chartHeight - yScale(d.avgDBH))
+                .attr("fill", "#2d6a4f");
+
+            bar.append("text")
+                .attr("x", barWidth / 2)
+                .attr("y", barHeight - 10)
+                .text("Caretaker");
+
+            bar.append("text")
+                .attr("x", -barHeight / 2 + 50)
+                .attr("y", 50)
+                .attr("transform", "rotate(-90)")
+                .text("Average DBH");
+        };
+        loadBar();
+
+    </script>
+
+</body>
+
+</html>
